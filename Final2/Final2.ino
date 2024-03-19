@@ -51,12 +51,12 @@ double timer = 0;
 float vel = 0;
 float vel_ant = 0;
 float position = 0;
-float posicion_ant = 0;
+float position_ant = 0;
 
 //**********
-float kp = 320.7;
-float ki = 0.0;
-float kd = 13.4;
+float kp = 94.87;
+float ki = 23.21;
+float kd = 86.7;
 float T = 0.02; //sampling time
 float y[2] = {0,0}; //out y[0] is the actual signal and y[1] backward
 float e[3] = {0,0,0}; //e[0] actual error e[1] backward error and e[2] error 2 steps behind
@@ -89,13 +89,12 @@ void controller_callback(rcl_timer_t * timer1, int64_t last_call_time) {
   RCLC_UNUSED(last_call_time);
   if(timer1 != NULL) {
     vel = (((pos - pos_ant)/DT)/(CPR*REDUCTOR))*(1000000 * 2.0 * 3.1416); // rad/s
-    position = posicion_ant + (vel + vel_ant) * T;
-    position = position * (180/3.1416); //rad to degrees
+    position = position_ant + (vel * T);
 
-    posicion_ant = position;
+    position_ant = position;
     pos_ant = pos;
 
-    msg_position.data = position;
+    msg_position.data = position * (180/3.1416); //rad to degrees;
 
     e[0] = msg_pwm.data - position;
 
