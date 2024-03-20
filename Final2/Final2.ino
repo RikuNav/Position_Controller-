@@ -54,8 +54,8 @@ float position = 0;
 float position_ant = 0;
 
 //**********
-float kp = 51.39;
-float ki = 53.21;
+float kp = 61.39; //61.39 if you want a 4 seconds rise time but a little overshoot, on the other hand 71.39 if you want a 8 seconds rise time and no overshoot
+float ki = 23.21;
 float kd = 86.7; //266.8
 float T = 0.02; //sampling time
 float y[2] = {0,0}; //out y[0] is the actual signal and y[1] backward
