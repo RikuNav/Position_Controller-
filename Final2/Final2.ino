@@ -54,9 +54,9 @@ float position = 0;
 float position_ant = 0;
 
 //**********
-float kp = 94.87;
-float ki = 23.21;
-float kd = 86.7;
+float kp = 51.39;
+float ki = 53.21;
+float kd = 86.7; //266.8
 float T = 0.02; //sampling time
 float y[2] = {0,0}; //out y[0] is the actual signal and y[1] backward
 float e[3] = {0,0,0}; //e[0] actual error e[1] backward error and e[2] error 2 steps behind
