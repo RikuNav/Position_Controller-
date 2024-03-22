@@ -30,7 +30,7 @@ void setup() {
     
     //The value we are charging into the register
     Wire.write(0b00000000);
-    Wire.endTransmission(true);
+    //Wire.endTransmission(false);
     Roll = 0.0;
     Pitch = 0.0;
     Yaw = 0.0;
@@ -54,7 +54,7 @@ void loop() {
 
     //We send the direction of the register we are gonna read
     Wire.write(0x3B);
-    Wire.endTransmission(false);
+    //Wire.endTransmission(false);
 
     //We read the data from the accelerometer
     Wire.requestFrom(MPU, 14, false);
@@ -138,7 +138,7 @@ float* calibrateSensor() {
 
         //We send the direction of the register we are gonna read
         Wire.write(0x3B);
-        Wire.endTransmission(false);
+        //Wire.endTransmission(false);
 
         //We read the data from the accelerometer
         Wire.requestFrom(MPU, 14, false);

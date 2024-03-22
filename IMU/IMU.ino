@@ -22,7 +22,8 @@ unsigned long startTime, endTime;
 double dt;
 int16_t Acc_x, Acc_y, Acc_z, Gyr_x, Gyr_y, Gyr_z, trash;
 float Accx, Accy, Accz, GyrX, GyrY, GyrZ, RollAcc, PitchAcc, RollGyr, PitchGyr, Yaw, Roll, Pitch;
-float* calibration;
+float calibration[3];
+float alpha = 0.95;
 
 rcl_publisher_t publisher_roll, publisher_pitch, publisher_yaw;
 rcl_subscription_t subscriber_pwm;
@@ -32,7 +33,7 @@ rclc_executor_t executor;
 rclc_support_t support;
 rcl_allocator_t allocator;
 rcl_node_t node;
-rcl_timer_t timer1, timer2;
+rcl_timer_t timer1;
 
 #define LED_PIN 2
 
@@ -42,16 +43,20 @@ rcl_timer_t timer1, timer2;
 //tiempo de muestreo
 #define DT 0.02
 
-void error_loop(){
-  while(1){
-    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-    delay(100);
-  }
-}
 
-void imu_callback(rcl_timer_t * timer1, int64_t last_call_time) {
-  RCLC_UNUSED(last_call_time);
-  if(timer1 != NULL) {
+// Function to calibrate the sensor and calculate offset
+void calibrateSensor() {
+  // Measure the initial temperature (multiple readings for accuracy)
+  float sum_x = 0.0;
+  float sum_y = 0.0;
+  float sum_z = 0.0;
+
+  int numReadings = 500; // Adjust number of readings for accuracy
+
+  for (int i = 0; i < numReadings; i++) {
+    if(dt == 0.0){
+      startTime = micros();
+    }
 
     //Access the registers of the accelerometer and the gyroscope
 
@@ -64,6 +69,7 @@ void imu_callback(rcl_timer_t * timer1, int64_t last_call_time) {
     //We read the data from the accelerometer
     Wire.requestFrom(MPU, 14, false);
 
+    
     //Obtain the measure of acceleration in x
     Acc_x = (Wire.read() << 8 | Wire.read());
 
@@ -95,9 +101,9 @@ void imu_callback(rcl_timer_t * timer1, int64_t last_call_time) {
     RollAcc = atan2(Accy, sqrt((pow(Accx, 2)) + (pow(Accz, 2))));
     PitchAcc = atan2(Accx, sqrt((pow(Accy, 2)) + (pow(Accz, 2))));
 
-    RollGyr = Roll + (GyrX * DT);
-    PitchGyr = Pitch + (GyrY * DT);
-    Yaw = Yaw + (GyrZ * DT);
+    RollGyr = Roll + (GyrX * dt);
+    PitchGyr = Pitch + (GyrY * dt);
+    Yaw = Yaw + (GyrZ * dt);
 
     RollAcc = (RollAcc * 180) / PI;
     PitchAcc = (PitchAcc * 180) / PI;
@@ -105,16 +111,99 @@ void imu_callback(rcl_timer_t * timer1, int64_t last_call_time) {
     Roll = (.95 * RollGyr) + (.05 * RollAcc);
     Pitch = (.95 * PitchGyr) + (.05 * PitchAcc);
     
+    sum_x += Roll;
+    sum_y += Pitch;
+    sum_z += Yaw;
+
+      if(dt == 0.0){
+          endTime = micros();
+          dt = float(endTime - startTime) / 1000000.0; 
+      }
+  }
+
+    float initial_x = sum_x / numReadings;
+    float initial_y = sum_y / numReadings;
+    float initial_z = sum_z / numReadings;
+
+    // Calculate the offset (difference between measured and desired temperature)
+    float offset_x = 0.0 - initial_x;
+    float offset_y = 0.0 - initial_y;
+    float offset_z = 0.0 - initial_z;
+
+    calibration[0] = offset_x;
+    calibration[1] = offset_y;
+    calibration[2] = offset_z;
+}
+
+void error_loop(){
+  while(1){
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    delay(100);
+  }
+}
+
+void controller_callback(rcl_timer_t * timer1, int64_t last_call_time) {
+  RCLC_UNUSED(last_call_time);
+  if(timer1 != NULL) {
+    Wire.beginTransmission(MPU);
+
+    //We send the direction of the register we are gonna read
+    Wire.write(0x3B);
+    Wire.endTransmission(false);
+
+    Wire.requestFrom(MPU, 14, false);
+
+    Acc_x = (Wire.read() << 8 | Wire.read());
+
+    //Obtain the measure of acceleration in y
+    Acc_y = (Wire.read() << 8 | Wire.read());
+      
+    //Obtain the measure of acceleration in z
+    Acc_z = (Wire.read() << 8 | Wire.read());
+
+    //Obtain the temperature
+    trash = (Wire.read() << 8 | Wire.read());
+
+    //Obtain the measure of speed in x
+    Gyr_x = (Wire.read() << 8 | Wire.read());
+
+    //Obtain the measure of speed in y
+    Gyr_y = (Wire.read() << 8 | Wire.read());
+
+    //Obtain the measure of speed in z
+    Gyr_z = (Wire.read() << 8 | Wire.read());
+
+    Accx = Acc_x * 2 / RES;
+    Accy = Acc_y * 2 / RES;
+    Accz = Acc_z * 2 / RES;
+    GyrX = Gyr_x * 250 / RES;
+    GyrY = Gyr_y * 250 / RES;
+    GyrZ = Gyr_z * 250 / RES;
+
+    RollGyr = Roll + (GyrX * DT);
+    PitchGyr = Pitch + (GyrY * DT);
+    Yaw += (GyrZ * DT);
+
+    RollAcc = atan2(Accy, sqrt((pow(Accx, 2)) + (pow(Accz, 2))));
+    PitchAcc = atan2(Accx, sqrt((pow(Accy, 2)) + (pow(Accz, 2))));
+
+    RollAcc = (RollAcc * 180) / PI;
+    PitchAcc = (PitchAcc * 180) / PI;
+    
+    Roll = (.95 * RollGyr) + (.05 * RollAcc);
+    Pitch = (.95 * PitchGyr) + (.05 * PitchAcc);
+    //Yaw = alpha * (Yaw + GyrZ * DT) +   (1 - alpha) * Roll;
 
     msg_roll.data = Roll + calibration[0];
     msg_pitch.data = Pitch + calibration[1];
     msg_yaw.data = Yaw + calibration[2];
-
     RCSOFTCHECK(rcl_publish(&publisher_roll, &msg_roll, NULL));
     RCSOFTCHECK(rcl_publish(&publisher_pitch, &msg_pitch, NULL));
     RCSOFTCHECK(rcl_publish(&publisher_yaw, &msg_yaw, NULL));
   }
+  
 }
+
 
 void setup() {
   set_microros_transports();
@@ -130,7 +219,7 @@ void setup() {
   RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
 
   // create node
-  RCCHECK(rclc_node_init_default(&node, "IMU_node", "", &support));
+  RCCHECK(rclc_node_init_default(&node, "Imu", "", &support));
 
   // create publisher
   RCCHECK(rclc_publisher_init_default(
@@ -157,7 +246,7 @@ void setup() {
     &timer1,
     &support,
     RCL_MS_TO_NS(timer_1),
-    imu_callback));
+    controller_callback));
 
   // create executor
   RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
@@ -176,110 +265,20 @@ void setup() {
   
   //The value we are charging into the register
   Wire.write(0b00000000);
+  
+  
   Wire.endTransmission(true);
   Roll = 0.0;
   Pitch = 0.0;
   Yaw = 0.0;
   dt = 0.0;
-
-  calibration = calibrateSensor();
-  delay(1000);
-
+  
+  calibrateSensor();
+  
+  delay(1000); 
 }
 
 void loop() {
   delay(1);
   RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(1)));
-}
-
-// Function to calibrate the sensor and calculate offset
-float* calibrateSensor() {
-    // Measure the initial temperature (multiple readings for accuracy)
-    float sum_x = 0.0;
-    float sum_y = 0.0;
-    float sum_z = 0.0;
-    static float offset[2];
-    int numReadings = 500; // Adjust number of readings for accuracy
-
-    for (int i = 0; i < numReadings; i++) {
-        if(dt == 0.0){
-            startTime = micros();
-        }
-
-        //Access the registers of the accelerometer and the gyroscope
-
-        Wire.beginTransmission(MPU);
-
-        //We send the direction of the register we are gonna read
-        Wire.write(0x3B);
-        Wire.endTransmission(false);
-
-        //We read the data from the accelerometer
-        Wire.requestFrom(MPU, 14, false);
-
-        //Obtain the measure of acceleration in x
-        Acc_x = (Wire.read() << 8 | Wire.read());
-
-        //Obtain the measure of acceleration in y
-        Acc_y = (Wire.read() << 8 | Wire.read());
-        
-        //Obtain the measure of acceleration in z
-        Acc_z = (Wire.read() << 8 | Wire.read());
-
-        //Obtain the temperature
-        trash = (Wire.read() << 8 | Wire.read());
-
-        //Obtain the measure of speed in x
-        Gyr_x = (Wire.read() << 8 | Wire.read());
-
-        //Obtain the measure of speed in y
-        Gyr_y = (Wire.read() << 8 | Wire.read());
-
-        //Obtain the measure of speed in z
-        Gyr_z = (Wire.read() << 8 | Wire.read());
-
-        Accx = Acc_x * 2 / RES;
-        Accy = Acc_y * 2 / RES;
-        Accz = Acc_z * 2 / RES;
-        GyrX = Gyr_x * 250 / RES;
-        GyrY = Gyr_y * 250 / RES;
-        GyrZ = Gyr_z * 250 / RES;
-
-        RollAcc = atan2(Accy, sqrt((pow(Accx, 2)) + (pow(Accz, 2))));
-        PitchAcc = atan2(Accx, sqrt((pow(Accy, 2)) + (pow(Accz, 2))));
-
-        RollGyr = Roll + (GyrX * dt);
-        PitchGyr = Pitch + (GyrY * dt);
-        Yaw = Yaw + (GyrZ * dt);
-
-        RollAcc = (RollAcc * 180) / PI;
-        PitchAcc = (PitchAcc * 180) / PI;
-        
-        Roll = (.95 * RollGyr) + (.05 * RollAcc);
-        Pitch = (.95 * PitchGyr) + (.05 * PitchAcc);
-        
-        sum_x += Roll;
-        sum_y += Pitch;
-        sum_z += Yaw;
-        
-        if(dt == 0.0){
-            endTime = micros();
-            dt = float(endTime - startTime) / 1000000.0; 
-        }
-    }
-
-    float initial_x = sum_x / numReadings;
-    float initial_y = sum_y / numReadings;
-    float initial_z = sum_z / numReadings;
-
-    // Calculate the offset (difference between measured and desired temperature)
-    float offset_x = 0.0 - initial_x;
-    float offset_y = 0.0 - initial_y;
-    float offset_z = 0.0 - initial_z;
-
-    offset[0] = offset_x;
-    offset[1] = offset_y;
-    offset[2] = offset_z;
-
-    return offset;
 }

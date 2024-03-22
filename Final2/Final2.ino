@@ -54,7 +54,7 @@ float position = 0;
 float position_ant = 0;
 
 //**********
-float kp = 61.39; //61.39 if you want a 4 seconds rise time but a little overshoot, on the other hand 71.39 if you want a 8 seconds rise time and no overshoot
+float kp = 71.39; //61.39 if you want a 4 seconds rise time but a little overshoot, on the other hand 71.39 if you want a 8 seconds rise time and no overshoot
 float ki = 23.21;
 float kd = 86.7; //266.8
 float T = 0.02; //sampling time
@@ -176,7 +176,7 @@ void setup() {
     &subscriber_pwm,
     &node,
     ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
-    "setpoint"));
+    "roll"));
 
   // create timer,
   const unsigned int timer_1 = 20;
